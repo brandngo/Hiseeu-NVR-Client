@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f5f7">
+  <title>NVR Camera Viewer</title>
+
+  <!-- Apply saved/system theme before rendering. -->
+  <script>
+    (() => {
+      let preference = null;
+
+      try {
+        const saved = localStorage.getItem("nvr-theme-preference");
+
+        if (saved === "light" || saved === "dark") {
+          preference = saved;
+        }
+      } catch (_) {}
+
+      document.documentElement.dataset.theme =
+        preference ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light");
+    })();
+  </script>
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>NVR Camera Viewer</h1>
+
+    <button id="theme-toggle" type="button">
+      🌙 Dark mode
+    </button>
+  </header>
+
+  <main class="camera-grid">
+    <section class="camera" id="camera-panel-0">
+      <div class="camera-header">
+        <h2>Camera 1</h2>
+        <button class="fullscreen-btn" data-camera="0" type="button">
+          ⛶ Fullscreen
+        </button>
+      </div>
+
+      <canvas
+        id="camera0"
+        width="640"
+        height="360"
+        aria-label="Camera 1 live video"
+      ></canvas>
+    </section>
+
+    <section class="camera" id="camera-panel-1">
+      <div class="camera-header">
+        <h2>Camera 2</h2>
+        <button class="fullscreen-btn" data-camera="1" type="button">
+          ⛶ Fullscreen
+        </button>
+      </div>
+
+      <canvas
+        id="camera1"
+        width="640"
+        height="360"
+        aria-label="Camera 2 live video"
+      ></canvas>
+    </section>
+  </main>
+
+  <div id="status" class="status" role="status" aria-live="polite">
+    Connecting to NVR...
+  </div>
+
+  <!-- Keep the SDK script order from your working setup. -->
+  <script src="./dist/view1.js"></script>
+  <script src="./dist/build.js"></script>
+  <script src="./dist/import.js"></script>
+  <script src="./lib/libde265.min.js"></script>
+  <script src="./env.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
