@@ -62,6 +62,35 @@ for (const [channel, camera] of Object.entries(cameras)) {
 
 // Create one shared NVR connection.
 const conn = apip2p.create(0);
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+
+function connectToNvr() {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  setStatus("Connecting to NVR...");
+  console.log("Connecting to", NVR_IP, NVR_PORT);
+  apip2p.connectbyip(conn, NVR_IP, NVR_PORT);
+}
+
+function scheduleReconnect(reason) {
+  if (reconnectTimer !== null) {
+    return;
+  }
+
+  const delay = Math.min(1000 * 2 ** reconnectAttempt, 30000);
+  reconnectAttempt++;
+  setStatus(`NVR disconnected. Retrying in ${Math.ceil(delay / 1000)}s...`);
+  console.warn("Scheduling NVR reconnect:", reason);
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectToNvr();
+  }, delay);
+}
 
 conn.preview = {};
 conn.playback = {
@@ -79,15 +108,22 @@ apip2p.onconnect = (...args) => {
   apip2p.login(conn, NVR_USERNAME, NVR_PASSWORD);
 };
 
+apip2p.ondisconnect = (...args) => {
+  console.warn("NVR disconnected:", ...args);
+  scheduleReconnect("socket closed");
+};
+
 // Login callback arguments are (connection, result).
 apip2p.onloginresult = (apiConn, result) => {
   console.log("NVR login result:", result);
 
   if (result !== 0) {
     setStatus(`NVR login failed: ${result}`);
+    scheduleReconnect(`login failed: ${result}`);
     return;
   }
 
+  reconnectAttempt = 0;
   setStatus("Login successful. Opening cameras...");
 
   // Open both channels using the same stream type.
@@ -172,10 +208,7 @@ apip2p.onrecvframeex = (
 
 // Start the connection once the page has loaded.
 window.addEventListener("load", () => {
-  setStatus("Connecting to NVR...");
-
-  console.log("Connecting to", NVR_IP, NVR_PORT);
-  apip2p.connectbyip(conn, NVR_IP, NVR_PORT);
+  connectToNvr();
 });
 
 (() => {
@@ -208,16 +241,46 @@ document.querySelectorAll(".fullscreen-btn").forEach((button) => {
 
     if (!panel) return;
 
+    const isFallbackFullscreen = panel.classList.contains("mobile-fullscreen");
+
+    if (isFallbackFullscreen) {
+      panel.classList.remove("mobile-fullscreen");
+      updateFullscreenButton(button, false);
+      return;
+    }
+
     try {
       if (document.fullscreenElement === panel) {
         await document.exitFullscreen();
-      } else {
+      } else if (typeof panel.requestFullscreen === "function") {
         await panel.requestFullscreen();
+      } else {
+        panel.classList.add("mobile-fullscreen");
+        updateFullscreenButton(button, true);
       }
     } catch (error) {
       console.error("Unable to enter fullscreen:", error);
+      panel.classList.add("mobile-fullscreen");
+      updateFullscreenButton(button, true);
     }
   });
+});
+
+function updateFullscreenButton(button, isFullscreen) {
+  button.textContent = isFullscreen ? "✕ Exit Fullscreen" : "⛶ Fullscreen";
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    document.querySelectorAll(".mobile-fullscreen").forEach((panel) => {
+      panel.classList.remove("mobile-fullscreen");
+      const button = panel.querySelector(".fullscreen-btn");
+
+      if (button) {
+        updateFullscreenButton(button, false);
+      }
+    });
+  }
 });
 
 // Keep button labels in sync, including when the user presses Esc.
@@ -225,9 +288,11 @@ document.addEventListener("fullscreenchange", () => {
   document.querySelectorAll(".fullscreen-btn").forEach((button) => {
     const channel = button.dataset.camera;
     const panel = document.getElementById(`camera-panel-${channel}`);
-    const isFullscreen = document.fullscreenElement === panel;
+    const isFullscreen =
+      document.fullscreenElement === panel ||
+      panel.classList.contains("mobile-fullscreen");
 
-    button.textContent = isFullscreen ? "✕ Exit Fullscreen" : "⛶ Fullscreen";
+    updateFullscreenButton(button, isFullscreen);
   });
 });
 
