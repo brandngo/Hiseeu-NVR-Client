@@ -1,8 +1,8 @@
 "use strict";
 
 // fill these with your nvr's credentials
-const NVR_USERNAME="";
-const NVR_PASSWORD="";
+const NVR_USERNAME = window.NVR_CREDS.username;
+const NVR_PASSWORD = window.NVR_CREDS.password;
 
 // fill the NVR_IP with your NVR's local IP address
 const NVR_IP = "192.168.50.146";
@@ -31,14 +31,18 @@ const cameras = {
     decoder: null,
     renderer: null,
     received: 0,
-    rendered: 0
+    rendered: 0,
+    streamType: STREAM_TYPE,
+    operationInProgress: false
   },
   1: {
     canvas: document.getElementById("camera1"),
     decoder: null,
     renderer: null,
     received: 0,
-    rendered: 0
+    rendered: 0,
+    streamType: STREAM_TYPE,
+    operationInProgress: false
   }
 };
 
@@ -62,6 +66,7 @@ for (const [channel, camera] of Object.entries(cameras)) {
 
 // Create one shared NVR connection.
 const conn = apip2p.create(0);
+let isLoggedIn = false;
 
 conn.preview = {};
 conn.playback = {
@@ -89,10 +94,12 @@ apip2p.onloginresult = (apiConn, result) => {
   }
 
   setStatus("Login successful. Opening cameras...");
+  isLoggedIn = true;
+  updateCameraControls();
 
-  // Open both channels using the same stream type.
-  apip2p.open_stream(conn, 0, STREAM_TYPE);
-  apip2p.open_stream(conn, 1, STREAM_TYPE);
+  for (const [channel, camera] of Object.entries(cameras)) {
+    apip2p.open_stream(conn, Number(channel), camera.streamType);
+  }
 };
 
 // Log stream-open results.
@@ -177,6 +184,93 @@ window.addEventListener("load", () => {
   console.log("Connecting to", NVR_IP, NVR_PORT);
   apip2p.connectbyip(conn, NVR_IP, NVR_PORT);
 });
+
+function updateCameraControls() {
+  document.querySelectorAll(".stream-toggle-btn, .refresh-btn").forEach((button) => {
+    const camera = cameras[button.dataset.camera];
+
+    if (!camera) {
+      return;
+    }
+
+    button.disabled = !isLoggedIn || camera.operationInProgress;
+
+    if (button.classList.contains("stream-toggle-btn")) {
+      const nextStream = camera.streamType === 0 ? "SD" : "HD";
+      button.textContent = nextStream;
+      button.setAttribute("aria-label", `Switch Camera ${Number(button.dataset.camera) + 1} to ${nextStream}`);
+      button.title = `Switch to ${nextStream} stream`;
+    }
+  });
+}
+
+function restartCamera(channel, streamType, statusMessage) {
+  const camera = cameras[channel];
+
+  if (!camera || !isLoggedIn || camera.operationInProgress) {
+    return;
+  }
+
+  camera.operationInProgress = true;
+  updateCameraControls();
+  setStatus(statusMessage);
+
+  apip2p.close_stream(conn, channel, camera.streamType);
+
+  // Give the NVR time to stop the previous stream before requesting the new one.
+  window.setTimeout(() => {
+    if (!isLoggedIn) {
+      camera.operationInProgress = false;
+      updateCameraControls();
+      return;
+    }
+
+    camera.streamType = streamType;
+    camera.received = 0;
+    camera.rendered = 0;
+    apip2p.open_stream(conn, channel, camera.streamType);
+    camera.operationInProgress = false;
+    updateCameraControls();
+    setStatus(`Camera ${channel + 1} is using the ${camera.streamType === 0 ? "HD" : "SD"} stream.`);
+  }, 250);
+}
+
+document.querySelectorAll(".stream-toggle-btn").forEach((button) => {
+  button.addEventListener("click", () => {
+    const channel = Number(button.dataset.camera);
+    const camera = cameras[channel];
+
+    if (!camera) {
+      return;
+    }
+
+    const nextStreamType = camera.streamType === 0 ? 1 : 0;
+    restartCamera(
+      channel,
+      nextStreamType,
+      `Switching Camera ${channel + 1} to the ${nextStreamType === 0 ? "HD" : "SD"} stream...`
+    );
+  });
+});
+
+document.querySelectorAll(".refresh-btn").forEach((button) => {
+  button.addEventListener("click", () => {
+    const channel = Number(button.dataset.camera);
+    const camera = cameras[channel];
+
+    if (!camera) {
+      return;
+    }
+
+    restartCamera(
+      channel,
+      camera.streamType,
+      `Refreshing Camera ${channel + 1}...`
+    );
+  });
+});
+
+updateCameraControls();
 
 (() => {
   const desiredTitle = "NVR Camera Viewer";

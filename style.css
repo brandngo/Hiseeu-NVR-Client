@@ -148,6 +148,15 @@ button:focus-visible {
    Buttons
    ========================= */
 
+.camera-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stream-toggle-btn,
+.refresh-btn,
 .fullscreen-btn,
 #theme-toggle {
   display: inline-flex;
@@ -168,9 +177,17 @@ button:focus-visible {
     border-color 0.15s ease;
 }
 
+.stream-toggle-btn:hover,
+.refresh-btn:hover,
 .fullscreen-btn:hover,
 #theme-toggle:hover {
   background: var(--button-hover);
+}
+
+.stream-toggle-btn:disabled,
+.refresh-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 /* =========================
